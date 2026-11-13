@@ -53,8 +53,8 @@ Entre em <https://www.databricks.com/learn/free-edition> e crie a conta (pode us
 O workspace já vem com o catálogo `workspace` e computação serverless.
 
 ### 2. Trazer o repositório para o workspace
-**Workspace → Create → Git folder**, cole `https://github.com/NandaTobias56/FOCO_FIT` e confirme.
-Os notebooks aparecem em `FOCO_FIT/analytics/databricks/notebooks/`.
+**Workspace → Create → Git folder**, cole `https://github.com/NandaTobias56/foco-fit-dados` e confirme.
+Os notebooks aparecem em `foco-fit-dados/analytics/databricks/notebooks/`.
 
 ### 3. Criar o volume e enviar os dados sintéticos
 No **SQL Editor**, rode:
