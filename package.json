@@ -1,0 +1,7 @@
+{
+  "name": "foco-fit-dados",
+  "private": true,
+  "type": "module",
+  "scripts": { "test:db": "node supabase/tests/rls.test.mjs" },
+  "devDependencies": { "@electric-sql/pglite": "^0.2.17" }
+}

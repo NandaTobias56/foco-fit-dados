@@ -1,0 +1,25 @@
+name: Testes
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  banco:
+    name: Regras de acesso do banco (PGlite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: npm install
+      - run: npm run test:db
+  dados-sinteticos:
+    name: Gerador de dados sintéticos (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r analytics/synthetic/requirements.txt
+      - run: pytest -q analytics/synthetic/tests

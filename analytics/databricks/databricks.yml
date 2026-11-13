@@ -1,0 +1,71 @@
+# Databricks Asset Bundle do lakehouse Foco Fit.
+# Passo a passo em README.md. Comandos (a partir desta pasta):
+#   databricks bundle validate
+#   databricks bundle deploy            # alvo dev (padrão)
+#   databricks bundle run foco_fit_lakehouse
+bundle:
+  name: foco_fit_lakehouse
+
+variables:
+  catalogo:
+    description: Catálogo do Unity Catalog (no Free Edition é "workspace").
+    default: workspace
+  prefixo_schema:
+    description: Prefixo dos schemas bronze, prata e ouro.
+    default: foco_fit
+  fonte_supabase:
+    description: "nenhuma, arquivos (CSVs exportados no volume) ou jdbc (secret scope foco_fit)."
+    default: nenhuma
+
+targets:
+  dev:
+    mode: development   # prefixa o job com [dev seu_usuario] e deixa o agendamento pausado
+    default: true
+    # O workspace vem do login da CLI (databricks auth login --host ...). Ver README.
+  prod:
+    mode: production
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+
+resources:
+  jobs:
+    foco_fit_lakehouse:
+      name: foco_fit_lakehouse
+      description: "Bronze → prata → ouro → KPIs → qualidade → jornada e funil. Notebooks em analytics/databricks/notebooks."
+      max_concurrent_runs: 1
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"   # todo dia às 6h
+        timezone_id: America/Sao_Paulo
+        pause_status: UNPAUSED
+      parameters:
+        - name: catalogo
+          default: ${var.catalogo}
+        - name: prefixo_schema
+          default: ${var.prefixo_schema}
+        - name: fonte_supabase
+          default: ${var.fonte_supabase}
+      tasks:
+        - task_key: bronze
+          notebook_task:
+            notebook_path: ./notebooks/01_bronze.py
+        - task_key: prata
+          depends_on: [{task_key: bronze}]
+          notebook_task:
+            notebook_path: ./notebooks/02_prata.py
+        - task_key: ouro
+          depends_on: [{task_key: prata}]
+          notebook_task:
+            notebook_path: ./notebooks/03_ouro.py
+        - task_key: kpis
+          depends_on: [{task_key: ouro}]
+          notebook_task:
+            notebook_path: ./notebooks/04_kpis.py
+        - task_key: qualidade
+          depends_on: [{task_key: kpis}]
+          notebook_task:
+            notebook_path: ./notebooks/05_qualidade.py
+        - task_key: jornada_funil
+          depends_on: [{task_key: qualidade}]
+          notebook_task:
+            notebook_path: ./notebooks/06_jornada_funil.py
+      # Sem cluster definido: as tarefas rodam em computação serverless (a única do Free Edition).
