@@ -1,4 +1,4 @@
-# Contrato de eventos do Foco Fit (v1 2026-11-02, v2 2026-11-08)
+# Contrato de eventos do Foco Fit (v1 2026-11-02, v2 2026-11-08, v3 2026-11-19)
 
 Base comum para todas as frentes da pós (PUC Minas, Analytics e BI). Quem mudar algo aqui avisa as outras frentes.
 
@@ -67,6 +67,44 @@ Regras:
   por aluno, comparada com Welch e com CUPED (taxa dos 28 dias anteriores como covariável). Secundárias:
   chegou a 7 dias seguidos, ativo nos últimos 7 dias. Guarda-corpo: toques no botão por dia e taxa de
   desligar notificações (quando houver o evento).
+
+## v3 (2026-11-19): o que a nutricionista acompanha
+
+O v3 também só acrescenta. Motivo: o painel da nutri já mostra adesão por refeição, escapes e
+consumido × plano a partir dos dias do aluno, mas porção, nota da troca, vontades de doce e as metas
+de macros não chegavam à análise de dados. Migração no Supabase:
+`supabase/migrations/20261119000001_eventos_v3.sql` (troca o `check` de tipos).
+
+`refeicao_registrada` ganha duas props (opcionais, porque eventos antigos não têm):
+
+| prop | quando vem | valores |
+| --- | --- | --- |
+| porcao | status `ok` ou `troca` | `0.5` (menos), `1` (o do plano), `1.5` (mais) |
+| nota | status `troca` | `'ok'` (troca boa), `'mod'` (com moderação), `'no'` (troca ruim) |
+
+Mudar só a porção de uma refeição já marcada gera um novo `refeicao_registrada`; como antes, o último
+evento do dia para aquela refeição vale. O texto do que o aluno comeu na troca não sai do aparelho.
+
+| tipo | quando dispara | props |
+| --- | --- | --- |
+| sos_doce_iniciado | o aluno toca em SOS Doce (vontade de doce) | {} |
+| sos_doce_cedeu | dentro do SOS, toca em "Ainda quero, me mostre opções leves" | {} |
+| dieta_recebida | o aluno recebe uma dieta da nutricionista (uma vez por dieta) | {dieta_id: text, kcal: int \| null, proteina_g, carbo_g, gordura_g: int \| null, refeicoes: [{refeicao_id, tipo, principal: bool, fatia: number}]} |
+
+`doce_sos_vencido` ganha `repetido: true` quando o aluno vence o doce de novo no mesmo dia (antes só a
+primeira vitória do dia virava evento).
+
+Regras:
+
+- Vontade de doce = `sos_doce_iniciado`. Desfecho: venceu (`doce_sos_vencido`), cedeu
+  (`sos_doce_cedeu`) ou nenhum dos dois (fechou o SOS). Escape = troca com nota `'no'` ou SOS cedido.
+- `fatia` é a parte da meta de calorias que cabe à refeição, a mesma divisão do app (café 20%, lanche
+  10%, almoço 30%, pré-treino 15%, jantar 25%, ceia 7%), normalizada para somar 1 no plano do aluno.
+- Consumido estimado de um dia = soma, nas refeições marcadas e não puladas, de
+  `kcal × fatia × porcao × fator da troca` (troca boa 1, com moderação 1,25, ruim 1,6). Só entra o dia
+  em que todas as refeições principais do plano foram marcadas. Os macros seguem a mesma proporção.
+  É a mesma conta do painel da nutri (`src/painel.js`).
+- O plano vale do dia em que chegou até o dia anterior ao próximo `dieta_recebida` do mesmo aluno.
 
 ## Dados sintéticos e Databricks
 

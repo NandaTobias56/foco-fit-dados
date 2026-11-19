@@ -116,13 +116,15 @@ await fails(A, "insert into eventos(tipo, dia, ocorrido_em, recebido_em) values 
 await fails(A, EV + "('tipo_inventado','2026-11-02', now(), 'web', null, null, '{}')", "tipo fora do contrato é recusado");
 await as(A, EV + "('tela_vista','2026-11-02', now(), 'web', '28', gen_random_uuid(), '{\"tela\":\"hoje\",\"origem\":\"aba\"}')");
 check((await rows(A, "select * from eventos where tipo='tela_vista'")).length === 1, "tipos do contrato v2 são aceitos");
+await as(A, EV + "('dieta_recebida','2026-11-19', now(), 'android', '120', gen_random_uuid(), '{\"dieta_id\":\"d1\",\"kcal\":1600,\"refeicoes\":[{\"refeicao_id\":\"cafe\",\"tipo\":\"cafe\",\"principal\":true,\"fatia\":0.2}]}')");
+check((await rows(A, "select * from eventos where tipo='dieta_recebida'")).length === 1, "tipos do contrato v3 são aceitos");
 await fails(A, EV + "('app_aberto','2026-11-02', now(), 'ios', null, null, '{}')", "plataforma fora do contrato é recusada");
 await fails(A, EV + "('app_aberto','2026-11-02', now(), 'web', null, null, '[1,2]')", "props precisa ser objeto");
 const evId = "11111111-1111-4111-8111-111111111111";
 const dup = () => as(A, "insert into eventos(id, tipo, dia, ocorrido_em) values ($1,'agua_copo','2026-11-02', now()) on conflict (id) do nothing", [evId]);
 await dup(); await dup();
 check((await rows(A, "select count(*)::int n from eventos where id=$1", [evId]))[0].n === 1, "reenvio do mesmo lote não duplica");
-check((await rows(A, "select * from eventos")).length === 3, "aluno lê os próprios eventos");
+check((await rows(A, "select * from eventos")).length === 4, "aluno lê os próprios eventos");
 await fails(A, "update eventos set tipo='app_aberto'", "ninguém altera evento");
 await fails(A, "delete from eventos", "ninguém apaga evento pelo app");
 check((await rows(B, "select * from eventos")).length === 0, "outro aluno não vê eventos");

@@ -24,13 +24,14 @@ flowchart LR
 
 | Camada | O que foi construído | Ferramentas | Onde está |
 | --- | --- | --- | --- |
-| Coleta | Contrato de eventos versionado (v1 e v2): telas, cadastro, refeições, treino, avisos, experimento | JSON, contrato em Markdown | [`analytics/docs/contrato-eventos.md`](analytics/docs/contrato-eventos.md) |
-| Banco operacional | Modelo relacional (perfis, vínculos, planos, avaliações, eventos), 6 migrações versionadas, regras de acesso por linha, funções do painel do profissional | PostgreSQL, Supabase, SQL | [`supabase/migrations`](supabase/migrations) |
-| Testes do banco | 117 checagens das regras de acesso rodando num Postgres em memória | PGlite, GitHub Actions | [`supabase/tests`](supabase/tests) |
+| Coleta | Contrato de eventos versionado (v1 a v3): telas, cadastro, refeições com porção e nota da troca, treino, avisos, experimento, SOS doce, dieta da nutri | JSON, contrato em Markdown | [`analytics/docs/contrato-eventos.md`](analytics/docs/contrato-eventos.md) |
+| Banco operacional | Modelo relacional (perfis, vínculos, planos, avaliações, eventos), 7 migrações versionadas, regras de acesso por linha, funções do painel do profissional | PostgreSQL, Supabase, SQL | [`supabase/migrations`](supabase/migrations) |
+| Testes do banco | 118 checagens das regras de acesso rodando num Postgres em memória | PGlite, GitHub Actions | [`supabase/tests`](supabase/tests) |
 | Dados simulados | 500 alunos e 20 profissionais em 6 meses, com perfis de comportamento e semente fixa | Python, pandas, NumPy, PyArrow, pytest | [`analytics/synthetic`](analytics/synthetic) |
 | Lakehouse | Bronze, prata e ouro, checagens de qualidade, job agendado como código | Databricks, Unity Catalog, Delta Lake, PySpark, Spark SQL, Asset Bundles | [`analytics/databricks`](analytics/databricks) |
 | Modelagem | Modelo estrela: `fato_aluno_dia`, fatos de refeição, treino, cardio, água e peso; dimensões de aluno, data, profissional e tipo de treino | Modelagem dimensional | [`03_ouro.py`](analytics/databricks/notebooks/03_ouro.py) |
 | Análise | KPIs, funil de ativação, jornada a partir da notificação, sequência de dias (gaps and islands), teste A/B com Welch e CUPED | SQL com funções de janela, Python | [`case_funil_jornada.sql`](analytics/databricks/sql/case_funil_jornada.sql) |
+| Nutrição | O painel da nutri levado ao lakehouse: adesão por refeição, escapes e vontades de doce, consumido × plano com kcal e macros estimados, plano com vigência (SCD) e um dashboard de 10 visuais | PySpark, Spark SQL, Databricks AI/BI | [`07_nutricao.py`](analytics/databricks/notebooks/07_nutricao.py), [`dashboard_nutri.sql`](analytics/databricks/sql/dashboard_nutri.sql) |
 | Governança | Pseudonimização do aluno com hash e sal em secret scope, dado sintético sempre separado do real, LGPD | Databricks secrets, RLS | [`analytics/docs/arquitetura.md`](analytics/docs/arquitetura.md) |
 
 ## Principais achados
@@ -44,6 +45,8 @@ Com os 500 alunos simulados (os padrões foram embutidos no gerador para testar 
 | Ter um personal vinculado se associa a mais retenção | 86% contra 74% ativos na semana 4 | Convidar para vincular um personal na semana 2 e medir com teste |
 | Tocar no aviso e só abrir o app costuma terminar sem ação | 62% a 66% das sessões de treino, água e lembrete | Botão de ação direto no aviso |
 | Teste A/B do botão "Fechar o dia" no aviso das 21 h | −3,2 ± 4,3 pontos (efeito mínimo detectável: 6,1) | Inconclusivo: não lançar e recalcular a amostra |
+| No fim de semana, jantar e lanche da tarde são os que menos seguem a dieta à risca | 51% e 50% à risca (contra 67% e 56% no dia útil); o jantar chega a 104% das calorias planejadas | A nutri sugerir trocas prontas para o jantar de sábado e domingo |
+| A vontade de doce vence mais à tarde e cede mais à noite | Vitória no SOS de 55%; depois das 22 h, 7 em cada 10 vontades terminam em "ainda quero" | Lembrete de SOS e opção de doce leve no fim da noite |
 
 Os números de associação são correlações. Por isso cada recomendação vem com um teste A/B para confirmar.
 

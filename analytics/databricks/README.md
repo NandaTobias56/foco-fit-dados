@@ -14,7 +14,10 @@ analytics/databricks/
 │   ├── 02_prata.py           # limpa, tipa, deduplica, pseudonimiza; separa rejeitados
 │   ├── 03_ouro.py            # modelo estrela: dimensões e fatos diários
 │   ├── 04_kpis.py            # KPIs por aluno/semana, por personal, base e retenção por coorte
-│   └── 05_qualidade.py       # checagens (falham o job) + histórico de qualidade
+│   ├── 05_qualidade.py       # checagens (falham o job) + histórico de qualidade
+│   ├── 06_jornada_funil.py   # produto digital: sessões, funil, caminhos, A/B
+│   └── 07_nutricao.py        # nutri (contrato v3): adesão por refeição, escapes, consumido × plano
+├── sql/                      # consultas avulsas: case de funil e dashboard da nutri
 └── tests/                    # roda o pipeline inteiro localmente com PySpark
 ```
 
@@ -26,6 +29,7 @@ analytics/databricks/
 | **prata** `foco_fit_prata` | `eventos`, `eventos_rejeitados`, `alunos`, `profissionais`, `vinculos` | tipos do contrato, props em colunas, dedupe por id e por conteúdo, `aluno_hash` = SHA-256(sal + id), nascimento vira ano e faixa etária, texto das promessas descartado |
 | **ouro** `foco_fit_ouro` | `dim_data`, `dim_aluno`, `dim_profissional`, `dim_tipo_treino`, `fato_refeicao`, `fato_treino_dia`, `fato_cardio_dia`, `fato_agua_dia`, `fato_peso_dia`, `fato_aluno_dia` | modelo estrela; desfeitos já descontados; tudo com `_origem` |
 | **ouro (produto digital)** | `jornada_sessao`, `funil_ativacao`, `jornada_transicoes`, `jornada_caminhos`, `notificacao_efeito`, `notificacao_atribuicao`, `atrito_registro`, `tagueamento_qualidade`, `tagueamento_checagens` | sessões, funil de ativação, caminhos e transições entre eventos, efeito das notificações, sinais de atrito e validação do plano de tags (notebook `06_jornada_funil.py`) |
+| **ouro (nutrição, v3)** | `fato_plano_dieta`, `fato_plano_refeicao`, `fato_refeicao_plano`, `fato_consumo_dia`, `fato_sos_dia`, `kpi_refeicao_semana`, `kpi_nutri_aluno_semana`, `kpi_nutricionista_semana`, `kpi_refeicao_base` | plano da nutri com vigência, desfecho de cada refeição do plano, consumido estimado × meta e macros, vontades de doce e escapes; checagens próprias que falham o job (notebook `07_nutricao.py`) |
 | **ouro (KPIs)** | `kpi_aluno_semana`, `kpi_profissional_semana`, `kpi_semana`, `kpi_retencao_coorte`, `qualidade_execucoes` | adesão à dieta, taxa de troca, treinos/semana, cardio, hidratação, dias registrados, sequência, variação de peso (4 sem.), retenção D7/D30 |
 
 ```
@@ -53,8 +57,10 @@ Entre em <https://www.databricks.com/learn/free-edition> e crie a conta (pode us
 O workspace já vem com o catálogo `workspace` e computação serverless.
 
 ### 2. Trazer o repositório para o workspace
-**Workspace → Create → Git folder**, cole `https://github.com/NandaTobias56/FOCO_FIT` e confirme.
-Os notebooks aparecem em `FOCO_FIT/analytics/databricks/notebooks/`.
+**Workspace → Create → Git folder**, cole `https://github.com/NandaTobias56/foco-fit-dados` e confirme.
+Os notebooks aparecem em `foco-fit-dados/analytics/databricks/notebooks/`. (O repositório do app é
+privado; o portfólio público `foco-fit-dados` recebe a mesma pasta `analytics/`.) Para atualizar depois,
+abra o **Web Terminal** e rode `cd foco-fit-dados && git restore . && git pull`.
 
 ### 3. Criar o volume e enviar os dados sintéticos
 No **SQL Editor**, rode:
@@ -71,7 +77,7 @@ Vale Parquet ou CSV, como arquivo único (`eventos.parquet`), em partes (`evento
 ou em pasta (`eventos/`).
 
 ### 4. Rodar
-**Opção A, tudo pelo navegador:** abra os notebooks `01` a `06` em ordem e clique em **Run all**
+**Opção A, tudo pelo navegador:** abra os notebooks `01` a `07` em ordem e clique em **Run all**
 em cada um (escolha *Serverless* como computação). Para criar o job agendado, abra a pasta
 `analytics/databricks` no Git folder, clique no `databricks.yml` e use **Deploy** no painel do
 bundle; depois **Run** no job `foco_fit_lakehouse`.
@@ -105,6 +111,15 @@ caminhos, efeito das notificações, atrito e qualidade das tags. As perguntas d
 avulso para o SQL Editor (sessionização com LAG, funil estrito, retenção em PIVOT, gaps and
 islands, comparação entre builds), estão em [`sql/case_funil_jornada.sql`](sql/case_funil_jornada.sql).
 Diferente do `05`, um alerta de tagueamento não derruba o job: vira achado em `tagueamento_checagens`.
+
+### 7. O que a nutricionista acompanha (contrato v3)
+`07_nutricao.py` leva para o lakehouse as análises do painel da nutri no app: **qual refeição mais
+falha** (adesão e "à risca" por refeição, dia útil × fim de semana), **escapes por semana** (trocas
+ruins + SOS cedido, vontades de doce e taxa de vitória) e **consumido × plano** (estimativa de kcal e
+macros nos dias com todas as refeições principais marcadas, com a mesma conta do app). As consultas do
+dashboard, uma por visual, estão em [`sql/dashboard_nutri.sql`](sql/dashboard_nutri.sql). Para montar:
+**Dashboards → Create dashboard → Data → Create from SQL**, cole cada bloco como um dataset e crie o
+visual indicado no comentário.
 
 ---
 
