@@ -31,7 +31,7 @@ resources:
   jobs:
     foco_fit_lakehouse:
       name: foco_fit_lakehouse
-      description: "Bronze → prata → ouro → KPIs → qualidade → jornada e funil. Notebooks em analytics/databricks/notebooks."
+      description: "Bronze → prata → ouro → KPIs → qualidade → jornada e funil, e nutrição. Notebooks em analytics/databricks/notebooks."
       max_concurrent_runs: 1
       schedule:
         quartz_cron_expression: "0 0 6 * * ?"   # todo dia às 6h
@@ -68,4 +68,8 @@ resources:
           depends_on: [{task_key: qualidade}]
           notebook_task:
             notebook_path: ./notebooks/06_jornada_funil.py
+        - task_key: nutricao
+          depends_on: [{task_key: qualidade}]
+          notebook_task:
+            notebook_path: ./notebooks/07_nutricao.py
       # Sem cluster definido: as tarefas rodam em computação serverless (a única do Free Edition).

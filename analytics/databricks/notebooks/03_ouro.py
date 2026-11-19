@@ -150,6 +150,9 @@ fato_refeicao = (ultimo_por(ref, chaves + ["refeicao_id"])
     .select("aluno_hash", data_key(F.col("dia")).alias("data_key"), "dia", "refeicao_id",
             F.col("refeicao_status").alias("status"),
             F.col("refeicao_status").isin("ok", "troca").cast("int").alias("seguiu"),
+            # contrato v3 (nulos antes dele): porção marcada e nota da troca
+            F.when(F.col("refeicao_status") != "pulei", F.col("refeicao_porcao")).alias("porcao"),
+            F.when(F.col("refeicao_status") == "troca", F.col("troca_nota")).alias("troca_nota"),
             F.col("hora_local").alias("hora_registro"), "eventos", "_origem"))
 salvar(fato_refeicao, SCHEMA_OURO, "fato_refeicao", "Status final de cada refeição por aluno e dia.")
 

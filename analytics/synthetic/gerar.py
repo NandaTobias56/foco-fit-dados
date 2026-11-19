@@ -10,7 +10,7 @@ from gerador import Config, gerar, salvar  # noqa: E402
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Gera dados sintéticos do Foco Fit (contrato de eventos v1 e v2).")
+    ap = argparse.ArgumentParser(description="Gera dados sintéticos do Foco Fit (contrato de eventos v1, v2 e v3).")
     ap.add_argument("--alunos", type=int, default=Config.alunos)
     ap.add_argument("--profissionais", type=int, default=Config.profissionais)
     ap.add_argument("--inicio", type=date.fromisoformat, default=Config.inicio)

@@ -102,3 +102,41 @@ def test_h12_cadastro_perde_gente_antes_das_metas(ev):
     alunos = c.assign(etapa=etapa).groupby("etapa")["aluno_id"].nunique()
     assert alunos["login_ok"] > alunos["avatar_ok"] > alunos["lembretes_ok"]
     assert .6 < alunos["lembretes_ok"] / alunos["login_ok"] < .95
+
+
+def _v3(ev):
+    from gerador import Config
+    return ev[ev["dia"] >= Config().inicio_v3]
+
+
+def test_h13_porcao_maior_no_jantar_e_no_fim_de_semana(ev):
+    r = _v3(ev)
+    r = r[r["tipo"] == "refeicao_registrada"]
+    p = r["props"].map(json.loads)
+    r = r.assign(ref=p.str["refeicao_id"], porcao=p.str.get("porcao"), fds=r["hora_local"].dt.dayofweek >= 5).dropna(subset=["porcao"])
+    mais = r.assign(mais=r["porcao"] > 1).groupby("ref")["mais"].mean()
+    assert mais["jantar"] > mais["almoco"] + .07
+    fds = r.assign(mais=r["porcao"] > 1).groupby("fds")["mais"].mean()
+    assert fds[True] > fds[False] + .07
+
+
+def test_h14_lanche_da_tarde_mais_trocado(ev):
+    r = _v3(ev)
+    r = r[r["tipo"] == "refeicao_registrada"]
+    p = r["props"].map(json.loads)
+    r = r.assign(ref=p.str["refeicao_id"], troca=p.str["status"] == "troca")
+    taxa = r.groupby("ref")["troca"].mean()
+    assert taxa["pre"] > taxa["almoco"] + .1 and taxa["pre"] > taxa["cafe"] + .1
+
+
+def test_h15_vontade_de_doce_cede_mais_a_noite_e_no_fim_de_semana(ev):
+    e = _v3(ev)
+    ini = e[e["tipo"] == "sos_doce_iniciado"]
+    ced = e[e["tipo"] == "sos_doce_cedeu"]
+    dias = e[e["tipo"] == "app_aberto"].assign(fds=lambda x: x["hora_local"].dt.dayofweek >= 5).groupby("fds")["dia"].count()
+    vont = ini.assign(fds=ini["hora_local"].dt.dayofweek >= 5).groupby("fds")["id"].count() / dias
+    assert vont[True] > vont[False] * 1.3
+    noite = lambda x: x["hora_local"].dt.hour >= 20
+    assert noite(ced).mean() > noite(ini).mean()
+    venc = e[e["tipo"] == "doce_sos_vencido"]
+    assert .35 < len(venc) / len(ini) < .75  # taxa de vitória no SOS

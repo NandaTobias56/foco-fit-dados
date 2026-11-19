@@ -82,7 +82,7 @@ def executar(nome, spark, volume, widgets=None, segredos=None):
     return ns
 
 
-PIPELINE = ["01_bronze.py", "02_prata.py", "03_ouro.py", "04_kpis.py", "05_qualidade.py", "06_jornada_funil.py"]
+PIPELINE = ["01_bronze.py", "02_prata.py", "03_ouro.py", "04_kpis.py", "05_qualidade.py", "06_jornada_funil.py", "07_nutricao.py"]
 
 
 def executar_pipeline(spark, volume, widgets=None, segredos=None):
