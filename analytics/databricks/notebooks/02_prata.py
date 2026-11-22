@@ -2,7 +2,7 @@
 # MAGIC %md
 # MAGIC # 02 · Prata: limpa, tipa, deduplica e pseudonimiza
 # MAGIC
-# MAGIC * `eventos`: tipos do contrato v1, props viram colunas tipadas, duplicatas saem, `aluno_id`
+# MAGIC * `eventos`: tipos do contrato v1 a v3, props viram colunas tipadas, duplicatas saem, `aluno_id`
 # MAGIC   vira `aluno_hash` (SHA-256 com sal secreto). O texto livre das promessas não passa daqui.
 # MAGIC * `eventos_rejeitados`: o que falhou nas regras, com o motivo (vira indicador de qualidade).
 # MAGIC * `alunos` e `profissionais`: a partir de `profiles`, só com hash, papel, ano e faixa etária.
@@ -68,6 +68,16 @@ tipado = (ev
         F.col("p.novo").alias("cadastro_novo"),
         F.col("p.experimento").alias("experimento"),
         F.upper(F.col("p.grupo")).alias("experimento_grupo"),
+        # v3
+        F.col("p.porcao").alias("refeicao_porcao"),
+        F.lower(F.col("p.nota")).alias("troca_nota"),
+        F.coalesce(F.col("p.repetido"), F.lit(False)).alias("sos_repetido"),
+        F.col("p.dieta_id").alias("dieta_id"),
+        F.col("p.kcal").alias("dieta_kcal"),
+        F.col("p.proteina_g").alias("dieta_proteina_g"),
+        F.col("p.carbo_g").alias("dieta_carbo_g"),
+        F.col("p.gordura_g").alias("dieta_gordura_g"),
+        F.col("p.refeicoes").alias("dieta_refeicoes"),
         F.coalesce(F.col("p.sintetico"), F.lit(False)).alias("sintetico"),
         F.col("props").alias("_props_json"),
         "_origem", "_ingerido_em",
@@ -76,7 +86,7 @@ tipado = (ev
 # COMMAND ----------
 
 # Os eventos tipados ficam numa tabela de passagem na bronze (que já guarda o dado cru) antes da
-# validação. Sem essa parada, o Spark junta a tipagem e as 17 regras numa expressão só e estoura a
+# validação. Sem essa parada, o Spark junta a tipagem e as regras numa expressão só e estoura a
 # memória do otimizador.
 tipado = spark.table(salvar(tipado, SCHEMA_BRONZE, "_eventos_tipados",
                             "Passagem interna da prata: eventos tipados antes da validação."))
@@ -114,6 +124,13 @@ regras = [
     ((F.col("tipo") == "experimento_exposto") &
      (F.col("experimento").isNull() | ~F.coalesce(F.col("experimento_grupo"), F.lit("")).isin("A", "B")),
      "experimento sem nome ou grupo A/B"),
+    # v3
+    (F.col("refeicao_porcao").isNotNull() & ~F.col("refeicao_porcao").isin(0.5, 1.0, 1.5), "porção fora de 0,5/1/1,5"),
+    (F.col("troca_nota").isNotNull() & ~F.col("troca_nota").isin("ok", "mod", "no"), "nota da troca fora de ok/mod/no"),
+    ((F.col("tipo") == "dieta_recebida") &
+     (F.col("dieta_id").isNull() | (F.coalesce(F.size("dieta_refeicoes"), F.lit(0)) < 1) |
+      (F.col("dieta_kcal").isNotNull() & ((F.col("dieta_kcal") < 800) | (F.col("dieta_kcal") > 6000)))),
+     "dieta recebida sem id, sem refeições ou meta fora de 800..6000 kcal"),
     # O dia local pode diferir da data UTC em até um dia; mais que isso é relógio errado.
     (F.abs(F.datediff(F.col("dia"), F.to_date("ocorrido_em"))) > 1, "dia incoerente com ocorrido_em"),
 ]
@@ -145,6 +162,8 @@ eventos_prata = (validos
             "cardio_minutos", "agua_delta", "agua_total_dia", "peso_kg", "bau_premio", "promessa_tamanho",
             "notificacao_tipo", "notificacao_acao", "notificacao_quantidade", "tela", "tela_origem",
             "cadastro_etapa", "cadastro_novo", "experimento", "experimento_grupo",
+            "refeicao_porcao", "troca_nota", "sos_repetido", "dieta_id", "dieta_kcal", "dieta_proteina_g",
+            "dieta_carbo_g", "dieta_gordura_g", "dieta_refeicoes",
             "sintetico", "_origem", "_ingerido_em"))
 
 rejeitados = (validado.filter(F.col("motivo_rejeicao").isNotNull())

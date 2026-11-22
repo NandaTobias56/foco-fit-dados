@@ -1,4 +1,4 @@
-"""O gerador respeita o contrato de eventos v1 e v2 (analytics/docs/contrato-eventos.md)."""
+"""O gerador respeita o contrato de eventos v1, v2 e v3 (analytics/docs/contrato-eventos.md)."""
 import json
 import uuid
 from datetime import timedelta
@@ -18,7 +18,12 @@ PROPS = {
     # v2
     "tela_vista": {"tela", "origem"}, "notificacao_agendada": {"tipo", "quantidade"},
     "experimento_exposto": {"experimento", "grupo"},
+    # v3
+    "sos_doce_iniciado": set(), "sos_doce_cedeu": set(),
+    "dieta_recebida": {"dieta_id", "kcal", "proteina_g", "carbo_g", "gordura_g", "refeicoes"},
 }
+# v3: props opcionais (eventos antes do v3 não têm)
+PROPS_V3 = {"refeicao_registrada": {"porcao", "nota"}}
 ETAPAS = {"codigo_pedido", "login_ok", "avatar_ok", "metas_ok", "dieta_ok", "lembretes_ok", "plano_do_professor"}
 
 
@@ -36,9 +41,18 @@ def test_tipos_e_props(ev):
         if tipo == "cadastro_etapa":
             assert set(p) in ({"etapa", "papel"}, {"etapa", "papel", "novo"}) and p["etapa"] in ETAPAS
             continue
-        assert set(p) == PROPS[tipo], tipo
+        assert PROPS[tipo] <= set(p) <= PROPS[tipo] | PROPS_V3.get(tipo, set()), tipo
         if tipo == "refeicao_registrada":
             assert p["status"] in {"ok", "troca", "pulei"}
+            if "porcao" in p:
+                assert p["porcao"] in (.5, 1, 1.5) and p["status"] != "pulei"
+                assert ("nota" in p) == (p["status"] == "troca")
+            if "nota" in p:
+                assert p["nota"] in {"ok", "mod", "no"}
+        elif tipo == "dieta_recebida":
+            assert 1000 <= p["kcal"] <= 3500 and p["proteina_g"] > 0 and p["carbo_g"] > 0
+            assert abs(sum(m["fatia"] for m in p["refeicoes"]) - 1) < .01
+            assert len(json.dumps(p)) < 2000  # limite de props no banco
         elif tipo == "agua_copo":
             assert p["delta"] in (1, -1) and p["total_dia"] >= 0
         elif tipo == "cardio_registrado":
@@ -113,3 +127,28 @@ def test_salvar_csv_e_parquet(tmp_path):
     pd.testing.assert_frame_equal(back, t["eventos"], check_dtype=False)
     csv = pd.read_csv(tmp_path / "eventos.csv")
     assert csv["ocorrido_em"].str.match(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$").all()
+
+
+def test_v3_comeca_na_data_e_cada_porcao_vem_com_o_v3(ev):
+    v3 = ev[ev["tipo"].isin(["sos_doce_iniciado", "sos_doce_cedeu", "dieta_recebida"])]
+    assert len(v3) and v3["dia"].min() >= Config().inicio_v3
+    r = ev[ev["tipo"] == "refeicao_registrada"]
+    com = r["props"].str.contains('"porcao"')
+    assert not com[r["dia"] < Config().inicio_v3].any()
+    assert com[(r["dia"] >= Config().inicio_v3) & ~r["props"].str.contains('"pulei"')].all()
+
+
+def test_v3_nao_mexe_no_v1_e_v2():
+    """Os eventos do v3 têm sorteio próprio: sem eles, o resto sai igual (só a porção e a nota a mais)."""
+    a = gerar(Config(alunos=25, seed=7))["eventos"]
+    b = gerar(Config(alunos=25, seed=7, inicio_v3=Config().fim + timedelta(days=1)))["eventos"]
+    a = a[~a["tipo"].isin(["sos_doce_iniciado", "sos_doce_cedeu", "dieta_recebida"])].reset_index(drop=True)
+    cols = ["id", "aluno_id", "tipo", "dia", "ocorrido_em", "sessao_id"]
+    pd.testing.assert_frame_equal(a[cols], b[cols])
+
+
+def test_v3_eventos_dentro_de_sessao(ev):
+    v3 = ev[ev["tipo"].isin(["sos_doce_iniciado", "sos_doce_cedeu", "dieta_recebida"])]
+    abre = ev[ev["tipo"] == "app_aberto"].groupby("sessao_id")["ocorrido_em"].min()
+    m = v3.join(abre.rename("abre"), on="sessao_id")
+    assert m["abre"].notna().all() and (m["ocorrido_em"] >= m["abre"]).all()

@@ -21,6 +21,8 @@ B = "bbbbbbbb-0000-0000-0000-000000000002"   # aluno sintético, só abriu o app
 C = "cccccccc-0000-0000-0000-000000000003"   # aluno real (exportação do Supabase)
 P1 = "dddddddd-0000-0000-0000-000000000004"  # personal sintético
 P2 = "eeeeeeee-0000-0000-0000-000000000005"  # personal real
+D = "ffffffff-0000-0000-0000-000000000006"   # aluno sintético com dieta da nutri (contrato v3)
+N1 = "abababab-0000-0000-0000-000000000007"  # nutricionista sintética
 SEG = date(2026, 6, 1)  # segunda-feira
 
 
@@ -36,6 +38,14 @@ def _ev(aluno, tipo, dia, hora=12, minuto=0, props=None, sintetico=True, id_=Non
         "plataforma": "android", "app_versao": "13", "sessao_id": str(uuid.uuid5(uuid.NAMESPACE_DNS, aluno + sessao)),
         "props": json.dumps(p),
     }
+
+
+def _plano(dieta_id, kcal):
+    return {"dieta_id": dieta_id, "kcal": kcal, "proteina_g": 120, "carbo_g": 160, "gordura_g": 50,
+            "refeicoes": [{"refeicao_id": "cafe", "tipo": "cafe", "principal": True, "fatia": .2},
+                          {"refeicao_id": "lanche", "tipo": "lanche", "principal": False, "fatia": .15},
+                          {"refeicao_id": "almoco", "tipo": "almoco", "principal": True, "fatia": .35},
+                          {"refeicao_id": "jantar", "tipo": "jantar", "principal": True, "fatia": .3}]}
 
 
 def _dados():
@@ -67,6 +77,26 @@ def _dados():
         _ev(A, "peso_registrado", 21, 7, props={"kg": 69.0}),
         # Aluno B: só abriu o app
         _ev(B, "app_aberto", 0, 7),
+        # Aluno D (contrato v3): dieta da nutri, porção, nota da troca e SOS doce, semana de 06-15
+        _ev(D, "app_aberto", 14, 7, sessao="d14"),
+        _ev(D, "dieta_recebida", 14, 7, 5, sessao="d14", props=_plano("dieta-1", 1600)),
+        _ev(D, "refeicao_registrada", 14, 8, sessao="d14", props={"refeicao_id": "cafe", "status": "ok", "porcao": 1}),
+        _ev(D, "refeicao_registrada", 14, 12, sessao="d14", props={"refeicao_id": "almoco", "status": "troca", "nota": "mod", "porcao": 1.5}),
+        _ev(D, "refeicao_registrada", 14, 20, sessao="d14", props={"refeicao_id": "jantar", "status": "ok", "porcao": 0.5}),
+        _ev(D, "sos_doce_iniciado", 14, 16, sessao="d14"),
+        _ev(D, "doce_sos_vencido", 14, 16, 10, sessao="d14"),
+        _ev(D, "app_aberto", 15, 8, sessao="d15"),
+        _ev(D, "refeicao_registrada", 15, 8, 1, sessao="d15", props={"refeicao_id": "cafe", "status": "ok", "porcao": 1}),
+        _ev(D, "refeicao_registrada", 15, 12, sessao="d15", props={"refeicao_id": "almoco", "status": "troca", "nota": "no", "porcao": 1}),
+        _ev(D, "sos_doce_iniciado", 15, 21, sessao="d15"),
+        _ev(D, "sos_doce_cedeu", 15, 21, 5, sessao="d15"),
+        _ev(D, "sos_doce_iniciado", 15, 22, sessao="d15"),
+        _ev(D, "app_aberto", 19, 9, sessao="d19"),
+        _ev(D, "dieta_recebida", 19, 9, 1, sessao="d19", props=_plano("dieta-2", 1500)),
+        _ev(D, "refeicao_registrada", 19, 9, 5, sessao="d19", props={"refeicao_id": "cafe", "status": "pulei"}),
+        _ev(D, "refeicao_registrada", 19, 13, sessao="d19", props={"refeicao_id": "almoco", "status": "troca", "nota": "no", "porcao": 1}),
+        _ev(D, "refeicao_registrada", 19, 20, sessao="d19", props={"refeicao_id": "jantar", "status": "ok", "porcao": 1.5}),
+        _ev(D, "refeicao_registrada", 19, 16, sessao="d19", props={"refeicao_id": "lanche", "status": "ok", "porcao": 2}),  # inválido
         # Inválidos
         _ev(A, "tipo_inventado", 3),
         _ev(A, "peso_registrado", 3, props={"kg": 900}),
@@ -78,8 +108,12 @@ def _dados():
         {"id": A, "papel": "aluno", "nascimento": "1995-03-10", "criado_em": "2026-05-31T10:00:00-03:00"},
         {"id": B, "papel": "aluno", "nascimento": "", "criado_em": "2026-05-31T10:00:00-03:00"},
         {"id": P1, "papel": "personal", "nascimento": "1988-01-01", "criado_em": "2026-01-01T10:00:00-03:00"},
+        {"id": D, "papel": "aluno", "nascimento": "1992-05-05", "criado_em": "2026-06-14T10:00:00-03:00"},
+        {"id": N1, "papel": "nutri", "nascimento": "1985-02-02", "criado_em": "2026-01-01T10:00:00-03:00"},
     ]
-    sint_vinculos = [{"aluno_id": A, "profissional_id": P1, "estado": "ativo", "criado_em": "2026-05-31T11:00:00-03:00"}]
+    sint_vinculos = [{"aluno_id": A, "profissional_id": P1, "estado": "ativo", "criado_em": "2026-05-31T11:00:00-03:00"},
+                     {"aluno_id": D, "profissional_id": N1, "tipo": "nutri", "estado": "ativo",
+                      "criado_em": "2026-06-14T11:00:00-03:00"}]
     supa_ev = [_ev(C, "treino_feito", 9, sintetico=False, props={"grupo": "costas"}),
                _ev(C, "app_aberto", 9, sintetico=False)]
     supa_profiles = [
@@ -124,21 +158,21 @@ def _hash(spark, id_):
 
 def test_bronze_guarda_origem(lake):
     por_origem = {r["_origem"]: r["count"] for r in lake.table("foco_fit_bronze.eventos").groupBy("_origem").count().collect()}
-    assert por_origem == {"sintetico": 29, "supabase": 2}
+    assert por_origem == {"sintetico": 48, "supabase": 2}
 
 
 def test_prata_rejeita_e_deduplica(lake):
     motivos = {r.motivo_rejeicao for r in lake.table("foco_fit_prata.eventos_rejeitados").collect()}
-    assert motivos == {"tipo fora do contrato", "peso fora de 25..350 kg"}
-    # 31 na bronze - 2 rejeitados - 1 id repetido - 1 reenvio com outro id
-    assert lake.table("foco_fit_prata.eventos").count() == 27
+    assert motivos == {"tipo fora do contrato", "peso fora de 25..350 kg", "porção fora de 0,5/1/1,5"}
+    # 50 na bronze - 3 rejeitados - 1 id repetido - 1 reenvio com outro id
+    assert lake.table("foco_fit_prata.eventos").count() == 45
 
 
 def test_prata_pseudonimiza(lake):
     cols = set(lake.table("foco_fit_prata.eventos").columns)
     assert "aluno_id" not in cols
     hashes = {r.aluno_hash for r in lake.table("foco_fit_prata.eventos").select("aluno_hash").distinct().collect()}
-    assert hashes == {_hash(lake, A), _hash(lake, B), _hash(lake, C)}
+    assert hashes == {_hash(lake, A), _hash(lake, B), _hash(lake, C), _hash(lake, D)}
 
 
 def test_fatos_do_dia(lake):
@@ -220,6 +254,71 @@ def test_transicoes_somam_um(lake):
 def test_tagueamento_aponta_rejeitados_e_duplicados(lake):
     c = {r.regra: r for r in lake.table("foco_fit_ouro.tagueamento_checagens")
          .filter("_origem = 'sintetico' and plataforma = 'todas'").collect()}
-    assert c["rejeitados"].valor == pytest.approx(2 / 29) and c["rejeitados"].status == "alerta"
-    assert c["duplicados"].valor == pytest.approx(2 / 29) and c["duplicados"].status == "alerta"
+    assert c["rejeitados"].valor == pytest.approx(3 / 48) and c["rejeitados"].status == "alerta"
+    assert c["duplicados"].valor == pytest.approx(2 / 48) and c["duplicados"].status == "alerta"
     assert c["props_incompletas"].status == "ok" and c["sem_sessao"].status == "ok"
+
+
+# ---------------------------------------------------------------- contrato v3 (07_nutricao)
+def test_prata_v3_tipada(lake):
+    hd = _hash(lake, D)
+    e = lake.table("foco_fit_prata.eventos").filter(f"aluno_hash = '{hd}' and tipo = 'refeicao_registrada' and dia = '2026-06-15'")
+    assert {(r.refeicao_id, r.refeicao_porcao, r.troca_nota) for r in e.collect()} == {
+        ("cafe", 1.0, None), ("almoco", 1.5, "mod"), ("jantar", 0.5, None)}
+    d = lake.table("foco_fit_prata.eventos").filter(f"aluno_hash = '{hd}' and tipo = 'dieta_recebida'").orderBy("dia").first()
+    assert d.dieta_kcal == 1600 and d.dieta_proteina_g == 120 and len(d.dieta_refeicoes) == 4
+
+
+def test_plano_com_vigencia(lake):
+    hd = _hash(lake, D)
+    p = {r.dieta_id: r for r in lake.table("foco_fit_ouro.fato_plano_dieta").filter(f"aluno_hash = '{hd}'").collect()}
+    assert (str(p["dieta-1"].vigente_de), str(p["dieta-1"].vigente_ate)) == ("2026-06-15", "2026-06-19")
+    assert str(p["dieta-2"].vigente_de) == "2026-06-20" and p["dieta-2"].vigente_ate is None and p["dieta-2"].vigente_hoje
+    assert p["dieta-1"].refeicoes_principais == 3
+    r = lake.table("foco_fit_ouro.fato_refeicao_plano").filter(f"aluno_hash = '{hd}'")
+    assert r.count() == 12  # 3 dias registrados x 4 refeições do plano
+
+
+def test_consumido_x_plano(lake):
+    hd = _hash(lake, D)
+    c = {str(r.dia): r for r in lake.table("foco_fit_ouro.fato_consumo_dia").filter(f"aluno_hash = '{hd}'").collect()}
+    # 1600 x (0,2 + 0,35 x 1,5 x 1,25 + 0,3 x 0,5)
+    assert c["2026-06-15"].dia_completo and c["2026-06-15"].kcal_estimado == pytest.approx(1610.0)
+    assert c["2026-06-15"].proteina_g_estimada == pytest.approx(120 * 1.00625, abs=.1)
+    assert not c["2026-06-16"].dia_completo and c["2026-06-16"].kcal_estimado is None  # jantar não marcado
+    # 1500 x (0 + 0,35 x 1,6 + 0,3 x 1,5): café pulado, troca ruim no almoço
+    assert c["2026-06-20"].kcal_estimado == pytest.approx(1515.0) and c["2026-06-20"].kcal_meta == 1500
+
+
+def test_sos_e_escapes(lake):
+    hd = _hash(lake, D)
+    s = {str(r.dia): r for r in lake.table("foco_fit_ouro.fato_sos_dia").filter(f"aluno_hash = '{hd}'").collect()}
+    assert (s["2026-06-15"].vontades, s["2026-06-15"].vencidas, s["2026-06-15"].escapes) == (1, 1, 0)
+    assert (s["2026-06-16"].vontades, s["2026-06-16"].cedidas, s["2026-06-16"].vontades_sem_desfecho,
+            s["2026-06-16"].trocas_ruins, s["2026-06-16"].escapes) == (2, 1, 1, 1, 2)
+    assert s["2026-06-20"].escapes == 1 and s["2026-06-20"].vontades == 0
+
+
+def test_kpi_nutri_aluno_semana(lake):
+    hd = _hash(lake, D)
+    k = lake.table("foco_fit_ouro.kpi_nutri_aluno_semana").filter(f"aluno_hash = '{hd}'").collect()
+    assert len(k) == 1
+    k = k[0]
+    assert str(k.semana_inicio) == "2026-06-15" and k.nutri_hash == _hash(lake, N1)
+    assert k.dias_com_plano == 3 and k.adesao_principais == pytest.approx(5 / 9, abs=1e-4)
+    assert k.refeicao_mais_dificil == "almoco" and k.adesao_refeicao_mais_dificil == pytest.approx(1 / 3, abs=1e-4)
+    assert (k.escapes, k.trocas_ruins, k.sos_vontades, k.sos_vencidas, k.sos_cedidas) == (3, 2, 3, 1, 1)
+    assert k.taxa_vitoria_sos == pytest.approx(1 / 3, abs=1e-4)
+    assert k.dias_completos == 2 and k.razao_consumo == pytest.approx((1.00625 + 1.01) / 2, abs=1e-4)
+    assert k.consumo_na_faixa and k.porcao_mais_pct == pytest.approx(2 / 7, abs=1e-4)
+
+
+def test_kpi_refeicao_e_nutricionista(lake):
+    hd = _hash(lake, D)
+    r = {x.refeicao_id: x for x in lake.table("foco_fit_ouro.kpi_refeicao_semana").filter(f"aluno_hash = '{hd}'").collect()}
+    assert (r["almoco"].troca_moderada, r["almoco"].troca_ruim, r["almoco"].dias) == (1, 2, 3)
+    assert r["jantar"].nao_marcou == 1 and r["cafe"].pulou == 1 and r["lanche"].nao_marcou == 3
+    n = lake.table("foco_fit_ouro.kpi_nutricionista_semana").filter(f"nutri_hash = '{_hash(lake, N1)}'").first()
+    assert n.alunos_com_plano == 1 and n.refeicao_mais_dificil == "almoco" and n.alunos_fora_da_faixa == 0
+    b = lake.table("foco_fit_ouro.kpi_refeicao_base").filter("_origem = 'sintetico'").collect()
+    assert {x.refeicao_id for x in b} == {"cafe", "lanche", "almoco", "jantar"}

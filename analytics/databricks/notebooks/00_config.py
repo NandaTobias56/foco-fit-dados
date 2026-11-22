@@ -67,12 +67,14 @@ spark.conf.set("spark.sql.session.timeZone", FUSO)
 
 # COMMAND ----------
 
-# Contrato de eventos v1 (pos-dados/contrato-eventos.md) + v2 (telas, cadastro, avisos agendados, experimentos).
+# Contrato de eventos v1 (analytics/docs/contrato-eventos.md) + v2 (telas, cadastro, avisos agendados, experimentos)
+# + v3 (porção e nota da refeição, SOS doce, dieta da nutri).
 TIPOS_EVENTO = [
     "app_aberto", "refeicao_registrada", "refeicao_desfeita", "treino_feito", "treino_desfeito",
     "cardio_registrado", "agua_copo", "peso_registrado", "doce_sos_vencido", "bau_aberto",
     "promessa_feita", "notificacao_tocada",
     "tela_vista", "cadastro_etapa", "notificacao_agendada", "experimento_exposto",
+    "sos_doce_iniciado", "sos_doce_cedeu", "dieta_recebida",
 ]
 COLUNAS_EVENTOS = ["id", "aluno_id", "tipo", "dia", "ocorrido_em", "recebido_em",
                    "plataforma", "app_versao", "sessao_id", "props"]
@@ -102,8 +104,28 @@ SCHEMA_PROPS = T.StructType([
     T.StructField("novo", T.BooleanType()),
     T.StructField("quantidade", T.IntegerType()),
     T.StructField("experimento", T.StringType()),
+    # v3
+    T.StructField("porcao", T.DoubleType()),
+    T.StructField("nota", T.StringType()),
+    T.StructField("repetido", T.BooleanType()),
+    T.StructField("dieta_id", T.StringType()),
+    T.StructField("kcal", T.IntegerType()),
+    T.StructField("proteina_g", T.IntegerType()),
+    T.StructField("carbo_g", T.IntegerType()),
+    T.StructField("gordura_g", T.IntegerType()),
+    T.StructField("refeicoes", T.ArrayType(T.StructType([
+        T.StructField("refeicao_id", T.StringType()),
+        T.StructField("tipo", T.StringType()),
+        T.StructField("principal", T.BooleanType()),
+        T.StructField("fatia", T.DoubleType()),
+    ]))),
     T.StructField("sintetico", T.BooleanType()),
 ])
+
+# Contrato v3: fator da troca no consumido estimado (o mesmo de src/painel.js) e faixa saudável do
+# consumido ÷ plano.
+FATOR_TROCA = {"ok": 1.0, "mod": 1.25, "no": 1.6}
+FAIXA_CONSUMO = (0.9, 1.1)
 
 # COMMAND ----------
 

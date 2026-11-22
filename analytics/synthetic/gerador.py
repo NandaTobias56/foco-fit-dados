@@ -30,6 +30,8 @@ TIPOS_EVENTO = [
     "doce_sos_vencido", "bau_aberto", "promessa_feita", "notificacao_tocada",
     # contrato v2 (2026-11-08): navegação, cadastro, avisos agendados e experimentos
     "tela_vista", "cadastro_etapa", "notificacao_agendada", "experimento_exposto",
+    # contrato v3 (2026-11-19): o que a nutricionista acompanha
+    "sos_doce_iniciado", "sos_doce_cedeu", "dieta_recebida",
 ]
 EXP_FECHAR_DIA = "botao_fechar_dia"
 COLUNAS_EVENTOS = [
@@ -60,6 +62,11 @@ DIVISOES = [
 PROMESSAS = ["Seguir todas as refeições principais", "Fazer meu cardio",
              "Beber toda a água", "Treinar com tudo"]
 PREMIOS = ["xp", "bone", "laco", "fone", "faixa", "coroa", "aureola", "academia", "praia", "por"]
+# Fatia da meta de calorias de cada refeição (src/pro.js SHARE) e fator da troca no consumido (src/painel.js).
+FATIA = {"cafe": .2, "lanche": .1, "almoco": .3, "pre": .15, "jantar": .25, "ceia": .07}
+FATOR_TROCA = {"ok": 1.0, "mod": 1.25, "no": 1.6}
+# Meta de calorias da nutri por objetivo (faixa sorteada) e gramas de macro por kg.
+KCAL_NUTRI = {"emagrecer": (1350, 1750), "massa": (2200, 2800), "saude": (1700, 2100)}
 UFS = ["MG"] * 8 + ["SP"] * 5 + ["RJ"] * 3 + ["BA", "PR", "RS", "DF"]
 
 # Builds publicados (número do FF_BUILD) e a data em que ficaram disponíveis.
@@ -105,6 +112,8 @@ class Config:
     desistem_no_cadastro: float = .18
     # Grupo B do teste: chance de quem toca em "Fechar o dia" completar o que faltava (H11).
     efeito_fechar_dia: float = .7
+    # Contrato v3 (porção, nota da troca, SOS doce, dieta da nutri) entra num build a partir desta data.
+    inicio_v3: date = date(2026, 10, 1)
 
 
 # ------------------------------------------------------------------ utilidades
@@ -229,7 +238,9 @@ def gerar(cfg: Config | None = None) -> dict[str, pd.DataFrame]:
         # sorteio próprio para o v2: não mexe na sequência aleatória do v1 (os números do v1 não mudam)
         r2 = np.random.default_rng(seq.spawn(1)[0])
         al.grupo = "B" if r2.random() < .5 else "A"
-        _simula(al, cfg, r, eventos, gabarito_dias, r2)
+        # mais um sorteio próprio para o v3 (o segundo filho da mesma semente): v1 e v2 não mudam
+        r3 = np.random.default_rng(seq.spawn(1)[0])
+        _simula(al, cfg, r, eventos, gabarito_dias, r2, r3)
         for prof_id, tipo, status in ((al.personal, "personal", al.personal_status), (al.nutri, "nutri", al.nutri_status)):
             if not prof_id:
                 continue
@@ -292,8 +303,40 @@ def _cadastro(r: np.random.Generator, al: Aluno, ate_etapa: int | None = None, p
     return evs
 
 
+def _porcao_nota(r3: np.random.Generator, pr: dict, fds: bool, troca_boa: bool | None) -> None:
+    """Contrato v3: porção e nota da troca na refeição (H13). Só usa o sorteio do v3.
+    `troca_boa` vem da regra do dia cumprido do v1 (troca boa conta como refeição boa); a nota respeita isso."""
+    st = pr["status"]
+    if st == "pulei":
+        return
+    if st == "troca":
+        if troca_boa is None:  # refeição opcional: o v1 não sorteia
+            troca_boa = r3.random() < .7
+        pr["nota"] = ("ok" if r3.random() < .55 else "mod") if troca_boa else "no"
+    mais = .10 + (.10 if pr["refeicao_id"] == "jantar" else 0) + (.10 if fds else 0) + (.08 if st == "troca" else 0)
+    menos = .12 + (.06 if pr["refeicao_id"] == "cafe" else 0)
+    u = r3.random()
+    pr["porcao"] = 1.5 if u < mais else (.5 if u < mais + menos else 1)
+
+
+def _plano_nutri(al: Aluno, r3: np.random.Generator, kcal: int | None = None) -> dict:
+    """Props do dieta_recebida: a dieta do modelo do objetivo, com meta e macros da nutri."""
+    if kcal is None:
+        lo, hi = KCAL_NUTRI[al.objetivo]
+        kcal = int(round(r3.uniform(lo, hi) / 50) * 50)
+    peso = al.peso_inicial
+    prot = int(round(peso * (2.0 if al.objetivo == "massa" else 1.6)))
+    gord = int(round(kcal * .27 / 9))
+    carb = max(60, int(round((kcal - prot * 4 - gord * 9) / 4)))
+    refs = DIETAS[al.objetivo]
+    tot = sum(FATIA[m[0]] for m in refs)
+    return {"dieta_id": _uuid(r3), "kcal": kcal, "proteina_g": prot, "carbo_g": carb, "gordura_g": gord,
+            "refeicoes": [{"refeicao_id": m[0], "tipo": m[0], "principal": m[2],
+                           "fatia": round(FATIA[m[0]] / tot, 3)} for m in refs]}
+
+
 def _simula(al: Aluno, cfg: Config, r: np.random.Generator, eventos: list, gab: list,
-            r2: np.random.Generator | None = None) -> None:
+            r2: np.random.Generator | None = None, r3: np.random.Generator | None = None) -> None:
     """Simula o aluno dia a dia, do cadastro até o fim da janela ou o abandono."""
     p = al.perfil
     refeicoes = DIETAS[al.objetivo]
@@ -309,6 +352,8 @@ def _simula(al: Aluno, cfg: Config, r: np.random.Generator, eventos: list, gab: 
     escudo_semana = None  # segunda-feira da semana em que o escudo foi usado
     desanimo = 0         # dias de desânimo depois de perder uma sequência longa
     ligado = True        # estado do perfil irregular (fases boas e ruins)
+    nutri_ativo = al.nutri_status == "ativo"
+    plano = None         # dieta da nutri em vigor (contrato v3): (props, dia em que chegou)
 
     d0 = al.criado_em.astimezone(FUSO).date()
     d = d0
@@ -347,6 +392,7 @@ def _simula(al: Aluno, cfg: Config, r: np.random.Generator, eventos: list, gab: 
         adesao = float(np.clip(adesao * (1 + .02 * min(seq, 8)), .05, .97))
         bons, treinou, cardio_min, copos = 0, False, 0, 0
         v2 = r2 is not None and d >= cfg.inicio_v2
+        v3 = r3 is not None and d >= cfg.inicio_v3
         registradas = set()
         dia_treino = al.divisao.get(d.weekday())
         evs: list[tuple] = []  # (minuto_local, tipo, props)
@@ -376,14 +422,27 @@ def _simula(al: Aluno, cfg: Config, r: np.random.Generator, eventos: list, gab: 
                     quando = noite + r.uniform(0, 6)
                 else:
                     quando = hora + abs(r.normal(0, 22)) + (r.exponential(60) if r.random() < .12 else 0)
-                evs.append((quando, "refeicao_registrada", {"refeicao_id": ref_id, "status": status}))
+                pr = {"refeicao_id": ref_id, "status": status}
+                evs.append((quando, "refeicao_registrada", pr))
                 registradas.add(ref_id)
                 if r.random() < .025:  # errou e desfez, depois corrigiu
+                    if v3:
+                        _porcao_nota(r3, pr, fds, None)
                     evs.append((quando + r.uniform(.2, 3), "refeicao_desfeita", {"refeicao_id": ref_id}))
                     status = r.choice(["ok", "troca", "pulei"]).item()
-                    evs.append((quando + r.uniform(3, 6), "refeicao_registrada", {"refeicao_id": ref_id, "status": status}))
-                if principal and status in ("ok", "troca") and (status == "ok" or r.random() < .7):
+                    pr = {"refeicao_id": ref_id, "status": status}
+                    evs.append((quando + r.uniform(3, 6), "refeicao_registrada", pr))
+                # mesmo sorteio do v1: só a troca de uma refeição principal sorteia se foi boa
+                troca_boa = (r.random() < .7) if principal and status == "troca" else None
+                if principal and (status == "ok" or troca_boa):
                     bons += 1
+                if v3:
+                    # H14: o lanche da tarde (pre) e o jantar do fim de semana viram troca "com moderação"
+                    # mais vezes. Continua refeição boa, então o dia cumprido não muda.
+                    if status == "ok" and r3.random() < (.22 if ref_id == "pre" else .18 if ref_id == "jantar" and fds else .04):
+                        pr["status"], troca_boa = "troca", True
+                        pr["nota"] = "mod"
+                    _porcao_nota(r3, pr, fds, troca_boa)
 
             # ---- treino (H4: mais forte que o cardio; H7: personal ajuda)
             if dia_treino:
@@ -423,7 +482,19 @@ def _simula(al: Aluno, cfg: Config, r: np.random.Generator, eventos: list, gab: 
 
             # ---- extras
             if r.random() < .12 + .05 * (p.nome == "disciplinado"):
-                evs.append((r.uniform(15 * 60, 22 * 60), "doce_sos_vencido", {}))
+                quando_doce = r.uniform(15 * 60, 22 * 60)
+                evs.append((quando_doce, "doce_sos_vencido", {}))
+                if v3:  # toda vitória começa com a vontade (o SOS de 10 minutos)
+                    evs.append((quando_doce - float(r3.uniform(8, 14)), "sos_doce_iniciado", {}, "v3"))
+            if v3:
+                # H15: vontades que não foram vencidas, mais no fim de semana e à noite; à noite cede mais
+                p_v = .07 + .09 * fds + .05 * (p.nome in ("fim_de_semana_fraco", "irregular"))
+                if r3.random() < p_v:
+                    noite_v = r3.random() < .65
+                    hora_v = float(r3.uniform(20 * 60, 23 * 60) if noite_v else r3.uniform(15 * 60, 17.5 * 60))
+                    evs.append((hora_v, "sos_doce_iniciado", {}, "v3"))
+                    if r3.random() < (.75 if noite_v else .5):
+                        evs.append((hora_v + float(r3.uniform(1, 8)), "sos_doce_cedeu", {}, "v3"))
             if r.random() < .18 * min(1, engaj):
                 evs.append((acorda + r.uniform(5, 40), "promessa_feita", {"texto": PROMESSAS[r.integers(4)]}))
             if al.plataforma == "android" and dia_treino and r.random() < .3:
@@ -454,7 +525,7 @@ def _simula(al: Aluno, cfg: Config, r: np.random.Generator, eventos: list, gab: 
             if r2.random() < .1:
                 evs.append((float(r2.uniform(12 * 60, 22 * 60)), "tela_vista", {"tela": "evolucao", "origem": "aba"}, True))
             if al.plataforma == "android":
-                primeiro = min((e[0] for e in evs), default=acorda) - .2
+                primeiro = min((e[0] for e in evs if e[-1] != "v3"), default=acorda) - .2
                 agend = [("refeicao", len(refeicoes)), ("agua", 6), ("lembrete", 1)] + ([("treino", 1)] if dia_treino else [])
                 for tipo_n, qtd in agend:
                     evs.append((primeiro, "notificacao_agendada", {"tipo": tipo_n, "quantidade": qtd}, True))
@@ -466,7 +537,10 @@ def _simula(al: Aluno, cfg: Config, r: np.random.Generator, eventos: list, gab: 
                     evs.append((hora, "notificacao_tocada", {"tipo": "lembrete", "acao": acao}, True))
                     if r2.random() < (cfg.efeito_fechar_dia if acao == "fechar_dia" else .2):
                         for i, (ref_id, _, principal) in enumerate(m for m in refeicoes if m[2] and m[0] not in registradas):
-                            evs.append((hora + 1 + i * .4, "refeicao_registrada", {"refeicao_id": ref_id, "status": "ok"}, True))
+                            pr = {"refeicao_id": ref_id, "status": "ok"}
+                            if v3:
+                                _porcao_nota(r3, pr, fds, None)
+                            evs.append((hora + 1 + i * .4, "refeicao_registrada", pr, True))
                             registradas.add(ref_id)
                             bons += 1
                         if acao == "fechar_dia" and dia_treino and not treinou and r2.random() < .3:
@@ -480,7 +554,7 @@ def _simula(al: Aluno, cfg: Config, r: np.random.Generator, eventos: list, gab: 
             seq += 1
             if r.random() < .85:
                 premio = "xp" if r.random() < .5 else PREMIOS[1 + r.integers(len(PREMIOS) - 1)]
-                ultimo_reg = max((e[0] for e in evs), default=20 * 60)
+                ultimo_reg = max((e[0] for e in evs if e[-1] != "v3"), default=20 * 60)
                 evs.append((ultimo_reg + r.uniform(.5, 4), "bau_aberto", {"premio": premio}))
         elif seq > 0 and escudo_semana != _segunda(d):
             escudo_semana, escudo = _segunda(d), True  # escudo segura a sequência
@@ -489,9 +563,18 @@ def _simula(al: Aluno, cfg: Config, r: np.random.Generator, eventos: list, gab: 
                 desanimo = 3
             seq = 0
 
+        # ---- contrato v3: a dieta da nutri chega ao aluno (e às vezes é revista depois de 2 a 4 semanas)
+        if v3 and ativo and nutri_ativo and t >= 1:
+            if plano is None or ((d - plano[1]).days >= 14 and r3.random() < .03):
+                kcal = None if plano is None else max(1200, plano[0]["kcal"] - int(r3.choice([100, 150, 200])))
+                props_plano = _plano_nutri(al, r3, kcal)
+                plano = (props_plano, d)
+                evs.append((min((e[0] for e in evs if e[-1] != "v3"), default=al.acorda_min) + float(r3.uniform(1, 20)),
+                            "dieta_recebida", props_plano, "v3"))
+
         if ativo:
             piso = (al.criado_em.hour * 60 + al.criado_em.minute + 1) if t == 0 else 0
-            _emite_dia(al, d, evs, r, eventos, piso, r2 if v2 else None)
+            _emite_dia(al, d, evs, r, eventos, piso, r2 if v2 else None, r3 if v3 else None)
         gab.append({
             "aluno_id": al.id, "dia": d, "semana_desde_cadastro": t // 7, "ativo": ativo,
             "refeicoes_boas": bons, "refeicoes_principais": len(principais), "dia_de_treino": bool(dia_treino),
@@ -502,26 +585,32 @@ def _simula(al: Aluno, cfg: Config, r: np.random.Generator, eventos: list, gab: 
 
 
 def _emite_dia(al: Aluno, d: date, evs: list, r: np.random.Generator, eventos: list, piso: float = 0,
-               r2: np.random.Generator | None = None) -> None:
+               r2: np.random.Generator | None = None, r3: np.random.Generator | None = None) -> None:
     """Ordena os eventos do dia, cria sessões (abre o app depois de 30 min parado) e grava.
 
     `piso` é o minuto do cadastro no primeiro dia: nada acontece antes de a conta existir.
     `r2` liga os eventos do contrato v2: eventos marcados como v2 (4º item da tupla) e a tela "hoje"
     de cada sessão usam esse sorteio próprio, para o v1 continuar igual.
+    `r3` liga os eventos do contrato v3 (4º item "v3"): eles não abrem sessão nem mudam as sessões do v1/v2;
+    entram na sessão do evento mais próximo, com o sorteio próprio do v3.
     """
-    if not evs:
-        evs = [(r.uniform(8 * 60, 22 * 60), None, None)]  # só abriu e olhou
     evs = [e if len(e) == 4 else (*e, False) for e in evs]
+    extra = [e for e in evs if e[3] == "v3"] if r3 is not None else []
+    evs = [e for e in evs if e[3] != "v3"]
+    if not evs:
+        evs = [(r.uniform(8 * 60, 22 * 60), None, None, False)]  # só abriu e olhou
     evs.sort(key=lambda e: e[0])
     if piso:
         janela = max(24 * 60 - 1 - (piso + 3), 1)
         ini, fim = evs[0][0], max(evs[-1][0], evs[0][0] + 1)
         escala = min(1.0, janela / (fim - ini))
         evs = [(piso + 3 + (m - ini) * escala, tp, pr, v) for m, tp, pr, v in evs]
+        extra = [(piso + 3 + (m - ini) * escala, tp, pr, v) for m, tp, pr, v in extra]
     ultimo = -1e9
     sessao = None
     build = _build(d, al.atraso_update if al.plataforma == "android" else 0)
     versao = None if (al.plataforma == "web" and r.random() < .05) else str(build)
+    pontos = []  # (minuto, sessão, abertura da sessão) de cada evento do v1/v2, para encaixar o v3
     for minuto, tipo, props, v2 in evs:
         if v2 and r2 is None:
             continue
@@ -537,7 +626,12 @@ def _emite_dia(al: Aluno, d: date, evs: list, r: np.random.Generator, eventos: l
                                       sessao, versao, r2))
         if tipo:
             eventos.append(_linha(al, d, minuto, tipo, props, sessao, versao, rr))
+        pontos.append((minuto, sessao, abre))
         ultimo = minuto
+    for minuto, tipo, props, _ in sorted(extra, key=lambda e: e[0]):
+        _, sessao_v3, abre_v3 = min(pontos, key=lambda pt: abs(pt[0] - minuto))
+        minuto = min(max(minuto, abre_v3 + .1, 5.0), 24 * 60 - 1.0)
+        eventos.append(_linha(al, d, minuto, tipo, props, sessao_v3, versao, r3))
 
 
 def _linha(al, d, minuto, tipo, props, sessao, versao, r):
